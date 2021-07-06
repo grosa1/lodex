@@ -21,6 +21,7 @@ import {
 } from '@material-ui/core';
 import { getViewComponent } from '../index';
 import _ from 'lodash';
+import { fromFields } from '../../sharedSelectors';
 
 class TableView extends Component {
     constructor(props) {
@@ -28,29 +29,54 @@ class TableView extends Component {
         this.onChangePage = this.onChangePage.bind(this);
         this.onChangeRowsPerPage = this.onChangeRowsPerPage.bind(this);
         this.sort = this.sort.bind(this);
+
+        const getOnUpdate = state => {
+            const filterFormatDataParameter = {
+                skip: state.page * state.rowsPerPage,
+                maxSize: state.rowsPerPage,
+            };
+
+            if (state.sortOn !== undefined && state.sort !== false)
+                filterFormatDataParameter.sort = [
+                    state.sortOn,
+                    state.sort,
+                ].join('/');
+
+            return () => this.props.filterFormatData(filterFormatDataParameter);
+        };
+
         this.state = {
             rowsPerPage: props.pageSize,
             page: 0,
             sortId: undefined,
+            sortOn: undefined,
             sort: false,
+            getOnUpdate,
         };
     }
 
     onChangePage(event, newPage) {
-        this.setState({
+        const newState = {
             ...this.state,
             page: newPage,
-        });
+        };
+
+        this.setState(newState, this.state.update(newState));
     }
 
     onChangeRowsPerPage(event) {
-        this.setState({
+        const newState = {
             ...this.state,
+            page: 0,
             rowsPerPage: parseInt(event.target.value, 10),
-        });
+        };
+
+        this.setState(newState, this.state.getOnUpdate(newState));
     }
 
-    sort(columnId) {
+    sort(column) {
+        const columnId = column.id;
+        const columnField = column.field;
         let sort = this.state.sort;
         if (columnId === this.state.sortId) {
             switch (sort) {
@@ -64,15 +90,50 @@ class TableView extends Component {
         } else {
             sort = 'asc';
         }
-        this.setState({
+
+        const newState = {
             ...this.state,
             sortId: columnId,
+            sortOn: columnField,
             sort: sort,
-        });
+        };
+
+        this.setState(newState, this.state.getOnUpdate(newState));
     }
 
     render() {
-        const { data, pageSize, p, columnsParameters } = this.props;
+        const {
+            data,
+            total,
+            ref_field,
+            pageSize,
+            p,
+            columnsParameters,
+        } = this.props;
+
+        const sortableColumn = column => {
+            if (ref_field === undefined) return column.title;
+            if (!_.keys(ref_field).includes(column.field)) return column.title;
+
+            return (
+                <TableSortLabel
+                    active={getSortDirection(column.id) !== false}
+                    direction={
+                        getSortDirection(column.id) === false
+                            ? 'asc'
+                            : getSortDirection(column.id)
+                    }
+                    onClick={() => this.sort(column)}
+                >
+                    {column.title}
+                </TableSortLabel>
+            );
+        };
+
+        const getSortDirection = columnId => {
+            if (columnId !== this.state.sortId) return false;
+            return this.state.sort;
+        };
 
         const buildColumn = (value, index, columnParameter) => {
             const { name, option } = columnParameter.format;
@@ -103,85 +164,47 @@ class TableView extends Component {
             );
         };
 
-        const getSortDirection = columnId => {
-            if (columnId !== this.state.sortId) return false;
-            return this.state.sort;
-        };
-
-        const sortElement = array => {
-            if (this.state.sort === false) return array;
-            const sortedArray = _.sortBy(array, [
-                o => {
-                    const parameter = _.findIndex(columnsParameters, {
-                        id: this.state.sortId,
-                    });
-                    return _.get(o, columnsParameters[parameter].field, '');
-                },
-            ]);
-            return this.state.sort === 'asc'
-                ? sortedArray
-                : _.reverse(sortedArray);
-        };
-
         return (
-            <TableContainer>
-                <Table>
-                    <TableHead>
-                        <TableRow>
-                            {columnsParameters.map(column => (
-                                <TableCell key={column.id}>
-                                    <TableSortLabel
-                                        active={
-                                            getSortDirection(column.id) !==
-                                            false
-                                        }
-                                        direction={
-                                            getSortDirection(column.id) ===
-                                            false
-                                                ? 'asc'
-                                                : getSortDirection(column.id)
-                                        }
-                                        onClick={() => this.sort(column.id)}
-                                    >
-                                        {column.title}
-                                    </TableSortLabel>
-                                </TableCell>
-                            ))}
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {sortElement(data)
-                            .slice(
-                                this.state.page * this.state.rowsPerPage,
-                                this.state.page * this.state.rowsPerPage +
-                                    this.state.rowsPerPage,
-                            )
-                            .map((entry, index) => (
+            <div>
+                <TableContainer>
+                    <Table>
+                        <TableHead>
+                            <TableRow>
+                                {columnsParameters.map(column => (
+                                    <TableCell key={column.id}>
+                                        {sortableColumn(column)}
+                                    </TableCell>
+                                ))}
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {data.map((entry, index) => (
                                 <TableRow key={`${index}-table`}>
                                     {columnsParameters.map(column =>
                                         buildColumn(entry, index, column),
                                     )}
                                 </TableRow>
                             ))}
-                    </TableBody>
-                    <TableFooter>
-                        <TablePagination
-                            rowsPerPageOptions={[
-                                pageSize,
-                                pageSize * 2,
-                                pageSize * 3,
-                                { label: p.t('all'), value: data.length },
-                            ]}
-                            rowsPerPage={this.state.rowsPerPage}
-                            count={data.length}
-                            page={this.state.page}
-                            onChangePage={this.onChangePage}
-                            labelRowsPerPage={p.t('rows_per_page')}
-                            onChangeRowsPerPage={this.onChangeRowsPerPage}
-                        />
-                    </TableFooter>
-                </Table>
-            </TableContainer>
+                        </TableBody>
+                        <TableFooter>
+                            <TablePagination
+                                rowsPerPageOptions={[
+                                    pageSize,
+                                    pageSize * 2,
+                                    pageSize * 3,
+                                    { label: p.t('all'), value: data.length },
+                                ]}
+                                rowsPerPage={this.state.rowsPerPage}
+                                count={total}
+                                page={this.state.page}
+                                onChangePage={this.onChangePage}
+                                labelRowsPerPage={p.t('rows_per_page')}
+                                onChangeRowsPerPage={this.onChangeRowsPerPage}
+                            />
+                        </TableFooter>
+                    </Table>
+                </TableContainer>
+            </div>
         );
     }
 }
@@ -189,7 +212,9 @@ class TableView extends Component {
 TableView.propTypes = {
     field: fieldPropTypes.isRequired,
     data: PropTypes.arrayOf(PropTypes.object).isRequired,
+    facets: PropTypes.arrayOf(PropTypes.object).isRequired,
     total: PropTypes.number.isRequired,
+    ref_field: PropTypes.object.isRequired,
     pageSize: PropTypes.number.isRequired,
     p: polyglotPropTypes.isRequired,
     columnsParameters: PropTypes.arrayOf(
@@ -203,19 +228,24 @@ TableView.propTypes = {
             }).isRequired,
         }),
     ).isRequired,
+    filterFormatData: PropTypes.func.isRequired,
 };
 
-const mapStateToProps = (_, { formatData, spaceWidth }) => {
+const mapStateToProps = (state, { formatData, spaceWidth }) => {
     if (!formatData || !formatData.items) {
         return {
+            facets: [],
             data: [],
             total: 0,
+            ref_field: {},
         };
     }
 
     return {
+        facets: fromFields.getFacetFields(state),
         data: formatData.items,
         total: formatData.total,
+        ref_field: formatData.ref_field,
         spaceWidth,
     };
 };

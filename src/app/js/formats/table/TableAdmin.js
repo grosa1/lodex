@@ -23,14 +23,13 @@ export const defaultArgs = {
     pageSize: 6,
     params: {
         maxSize: 6,
-        orderBy: 'value/asc',
     },
     columnsCount: 2,
     columnsParameters: [
         {
             id: 0,
             format: {
-                name: '',
+                name: 'None',
                 option: undefined,
             },
             field: '',
@@ -41,7 +40,7 @@ export const defaultArgs = {
             field: '',
             title: 'Column 2',
             format: {
-                name: '',
+                name: 'None',
                 option: undefined,
             },
         },
@@ -79,13 +78,16 @@ class TableAdmin extends Component {
         args: defaultArgs,
     };
 
-    setParams = params => updateAdminArgs('params', params, this.props);
-
     setPageSize = e => {
-        this.props.onChange({
+        const newPageSize = parseInt(e.target.value, 10);
+        const newProps = {
             ...this.props.args,
-            pageSize: parseInt(e.target.value, 10),
-        });
+            pageSize: newPageSize,
+            params: {
+                maxSize: newPageSize,
+            },
+        };
+        this.props.onChange(newProps);
     };
 
     setColumnParameter = args => {
@@ -99,19 +101,10 @@ class TableAdmin extends Component {
     render() {
         const {
             p: polyglot,
-            args: { params, pageSize, columnsCount, columnsParameters },
+            args: { pageSize, columnsCount, columnsParameters },
         } = this.props;
         return (
             <div style={styles.container}>
-                <RoutineParamsAdmin
-                    params={params || defaultArgs.params}
-                    onChange={this.setParams}
-                    polyglot={polyglot}
-                    showMaxSize={true}
-                    showMaxValue={false}
-                    showMinValue={false}
-                    showOrderBy={false}
-                />
                 <TextField
                     label={polyglot.t('items_per_page')}
                     onChange={this.setPageSize}
